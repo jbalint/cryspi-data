@@ -1,0 +1,23 @@
+% Note: NO WHITESPACE is allowed
+
+rule <- func_term ":-" disj "." ` datalog_parse:rule(Node) ` ;
+
+disj <- conj (";" conj)* ` datalog_parse:disj(Node) ` ;
+
+conj <- unit_clause ("," unit_clause)* ` datalog_parse:conj(Node) ` ;
+
+unit_clause <- "(" disj ")" / term ` datalog_parse:unit_clause(Node) ` ;
+
+% Terms
+
+term <- func_term / constant / int ;
+
+func_term <- symbol_name "(" arg_list ")" ` datalog_parse:func(Node) ` ;
+
+arg_list <- (term ("," term)*)? ` datalog_parse:arg_list(Node) ` ;
+
+constant <- symbol_name ` {const, Node} ` ;
+
+symbol_name <- [a-z] [a-z0-9_]* ` lists:concat([binary_to_list(Char) || Char <- datalog_parse:l(Node)]) ` ;
+
+int <- [0-9]+ ` list_to_integer(Node) ` ;
