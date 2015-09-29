@@ -48,7 +48,7 @@ unit_clause(Node) ->
     end.
 
 %% @doc Print a formula as a string
--spec to_string(Formula::formula()) -> iolist().
+%%%%%%%%%%%%%%%%%%-spec to_string(Formula::formula()) -> iolist().
 to_string(Formula) ->
     case Formula of
         {const, Name} ->

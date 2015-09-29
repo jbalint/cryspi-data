@@ -1,0 +1,138 @@
+%% -------------------------------------------------------------------
+%%
+%%   Copyright 2015 Jess Balint
+%%
+%%   Licensed under the Apache License, Version 2.0 (the "License");
+%%   you may not use this file except in compliance with the License.
+%%   You may obtain a copy of the License at
+%%
+%%       http://www.apache.org/licenses/LICENSE-2.0
+%%
+%%   Unless required by applicable law or agreed to in writing, software
+%%   distributed under the License is distributed on an "AS IS" BASIS,
+%%   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%   See the License for the specific language governing permissions and
+%%   limitations under the License.
+%%
+%% -------------------------------------------------------------------
+
+%% @doc Unification of terms.
+
+-module(unify).
+-compile([export_all]).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif. % TEST.
+
+unify([], [], Unifier) -> {ok, Unifier};
+
+unify(Terms1, Terms2, _) when length(Terms1) /= length(Terms2) -> error;
+
+unify([{var, V1}|Tail1], [{var, V2}|Tail2], Unifier) ->
+    case {maps:find(V1, Unifier), maps:find(V2, Unifier)} of
+        % both variables are bound
+        {{ok, Term1}, {ok, Term2}} ->
+            unify([Term1|Tail1], [Term2|Tail2], Unifier);
+        % neither are bound, bind (value=)V1 to (key=)V2
+        {error, error} ->
+            unify(Tail1, Tail2, maps:put(V2, {var, V1}, Unifier));
+        % one of the two is already bound. Bind the unbound to the value of the bound
+        {{ok, Term1}, error} ->
+            unify(Tail1, Tail2, maps:put(V2, Term1, Unifier));
+        {error, {ok, Term2}} ->
+            unify(Tail1, Tail2, maps:put(V1, Term2, Unifier))
+    end;
+
+% Term is a ground term. vars are handled above
+unify([{var, V}|Tail1], [GroundTerm|Tail2], Unifier) ->
+    case maps:find(V, Unifier) of
+        {ok, VTerm} ->
+            unify([VTerm|Tail1], [GroundTerm|Tail2], Unifier);
+        error ->
+            unify(Tail1, Tail2, maps:put(V, GroundTerm, Unifier))
+    end;
+% Inverse
+unify([GroundTerm|Tail1], [{var, V}|Tail2], Unifier) ->
+    unify([{var, V}|Tail2], [GroundTerm|Tail1], Unifier);
+
+unify([Ground1|Tail1], [Ground2|Tail2], Unifier) when Ground1 == Ground2 ->
+    unify(Tail1, Tail2, Unifier);
+
+% TODO lists
+
+unify([{f, Name1, Args1}|Tail1], [{f, Name2, Args2}|Tail2], Unifier) ->
+    case Name1 of
+        Name2 ->
+            % let unify/3 make sure args lists are the same length
+            unify(Args1 ++ Tail1, Args2 ++ Tail2, Unifier);
+        _SomethingElse ->
+            error
+    end;
+
+unify(_, _, _) -> error. % same return value as maps:find/2 ... ok?
+
+-ifdef(TEST).
+simple_test() ->
+    [?assertEqual({ok, #{"X" => {const, "asd"}}},
+                  unify([{var, "X"}], [{const, "asd"}], #{})),
+     ?assertEqual({ok, #{"X" => {const, "asd"}}},
+                  unify([{const, "asd"}], [{var, "X"}], #{})),
+     ?assertEqual({ok, #{"X" => {const, "asd"}}},
+                  unify([{const, "asd"}, {const, "asd"}],
+                        [{var, "X"},     {var, "X"}],
+                        #{})),
+     ?assertEqual({ok, #{"X" => {const, "asd"}, "Y" => {const, "asd"}}},
+                  unify([{const, "asd"}, {const, "asd"}, {var, "X"}],
+                        [{var, "Y"},     {var, "X"},     {var, "Y"}],
+                        #{})),
+     ?assertEqual({ok, #{"X" => {const, "asd"}, "Y" => {var, "X"}}},
+                  ?LET(Unifier, unify([{var, "X"}, {const, "asd"}],
+                                      [{var, "Y"},     {var, "X"}],
+                                      #{}),
+                       Unifier)),
+     ?assertEqual({ok, #{"X" => {const, "asd"}, "Y" => {const, "asd"}}},
+                  unify([{const, "asd"}, {var, "Y"}],
+                        [{var, "Y"},     {var, "X"}],
+                        #{})),
+     ?assertEqual(error,
+                  unify([{f, "asd", []}], [{f, "asdf", []}], #{})),
+     ?assertEqual({ok,#{"X" => {const, "asd"}}},
+                  unify([{f, "asd", [{var, "X"}]}],
+                        [{f, "asd", [{const, "asd"}]}], #{}))
+    ].
+
+defined_cases_test() ->
+    [% Y = f(W), Z = f(a), Y = Z.
+     ?assertEqual({ok, #{"W" => {const, "a"},
+                         "Y" => {f, "f", [{var, "W"}]},
+                         "Z" => {f, "f", [{const, "a"}]}}},
+                  unify([{f, "f", [{var, "W"}]}, {f, "f", [{const, "a"}]}, {var, "Z"}],
+                        [{var, "Y"},             {var, "Z"},               {var, "Y"}],
+                        #{})),
+     % Z = f(X), Y = f(W), W = f(a), Y = Z
+     ?assertEqual({ok, #{"W" => {f, "f", [{const, "a"}]},
+                         "X" => {f, "f", [{const, "a"}]},
+                         "Y" => {f, "f", [{var, "W"}]},
+                         "Z" => {f, "f", [{var, "X"}]}}},
+                  unify([{f, "f", [{var, "X"}]}, {f, "f", [{var, "W"}]}, {f, "f", [{const, "a"}]}, {var, "Z"}],
+                        [{var, "Z"},             {var, "Y"},             {var, "W"},               {var, "Y"}],
+                        #{}))
+    ].
+
+long_test() ->
+     % T1 = p(Z, h(Z, W), f(W)), T2 = p(f(X), h(Y, f(a)), Y), T1 = T2.
+     % this literal of internal representation is admittedly a bit much, but a good test
+    T1 = {f, "p", [{var, "Z"},             {f, "h", [{var, "Y"}, {f, "f", [{const, "a"}]}]}, {var, "Y"}]},
+    T2 = {f, "p", [{f, "f", [{var, "X"}]}, {f, "h", [{var, "Z"}, {var, "W"}]},               {f, "f", [{var, "W"}]}]},
+    ?assertEqual({ok,#{"T1" => T1,
+                       "T2" => T2,
+                       "W" => {f,"f",[{const,"a"}]},
+                       "X" => {f,"f",[{const,"a"}]},
+                       "Y" => {f,"f",[{var,"X"}]},
+                       "Z" => {f,"f",[{var,"X"}]}}},
+                 unify([T1,          T2,          {var, "T2"}],
+                       [{var, "T1"}, {var, "T2"}, {var, "T1"}],
+                       #{})).
+
+-endif. % TEST.
