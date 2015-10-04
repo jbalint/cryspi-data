@@ -25,9 +25,26 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif. % TEST.
 
+% Replace any variables in the given term according to the unifier
+lookup({var, V}, Unifier) ->
+    case maps:find(V, Unifier) of
+        error ->
+            {var, V};
+        {ok, Term} ->
+            io:format("Looking up ~p as ~p\n", [V, Term]),
+            lookup(Term, Unifier)
+    end;
+lookup({func, Name, Args}, Unifier) ->
+    {func, Name, lists:map(fun (Arg) -> lookup(Arg, Unifier) end, Args)};
+lookup(Term, _) ->
+    Term.
+
 unify([], [], Unifier) -> {ok, Unifier};
 
 unify(Terms1, Terms2, _) when length(Terms1) /= length(Terms2) -> error;
+
+unify([{var, V1}|Tail1], [{var, V2}|Tail2], Unifier) when V1 == V2 ->
+    unify(Tail1, Tail2, Unifier);
 
 unify([{var, V1}|Tail1], [{var, V2}|Tail2], Unifier) ->
     case {maps:find(V1, Unifier), maps:find(V2, Unifier)} of
@@ -61,7 +78,7 @@ unify([Ground1|Tail1], [Ground2|Tail2], Unifier) when Ground1 == Ground2 ->
 
 % TODO lists
 
-unify([{f, Name1, Args1}|Tail1], [{f, Name2, Args2}|Tail2], Unifier) ->
+unify([{func, Name1, Args1}|Tail1], [{func, Name2, Args2}|Tail2], Unifier) ->
     case Name1 of
         Name2 ->
             % let unify/3 make sure args lists are the same length
@@ -96,41 +113,57 @@ simple_test() ->
                         [{var, "Y"},     {var, "X"}],
                         #{})),
      ?assertEqual(error,
-                  unify([{f, "asd", []}], [{f, "asdf", []}], #{})),
+                  unify([{func, "asd", []}], [{func, "asdf", []}], #{})),
      ?assertEqual({ok,#{"X" => {const, "asd"}}},
-                  unify([{f, "asd", [{var, "X"}]}],
-                        [{f, "asd", [{const, "asd"}]}], #{}))
+                  unify([{func, "asd", [{var, "X"}]}],
+                        [{func, "asd", [{const, "asd"}]}], #{})),
+     % diff # of args
+     ?assertEqual(error,
+                  unify([{func, "a", [{const, "a"}, {const, "b"}]}],
+                        [{func, "a", [{const, "a"}]}], #{})),
+     % Don't bind a variable to itself
+     ?assertEqual({ok, #{}},
+                   unify([{var, "X"}], [{var, "X"}], #{}))
     ].
 
 defined_cases_test() ->
     [% Y = f(W), Z = f(a), Y = Z.
      ?assertEqual({ok, #{"W" => {const, "a"},
-                         "Y" => {f, "f", [{var, "W"}]},
-                         "Z" => {f, "f", [{const, "a"}]}}},
-                  unify([{f, "f", [{var, "W"}]}, {f, "f", [{const, "a"}]}, {var, "Z"}],
+                         "Y" => {func, "f", [{var, "W"}]},
+                         "Z" => {func, "f", [{const, "a"}]}}},
+                  unify([{func, "f", [{var, "W"}]}, {func, "f", [{const, "a"}]}, {var, "Z"}],
                         [{var, "Y"},             {var, "Z"},               {var, "Y"}],
                         #{})),
      % Z = f(X), Y = f(W), W = f(a), Y = Z
-     ?assertEqual({ok, #{"W" => {f, "f", [{const, "a"}]},
-                         "X" => {f, "f", [{const, "a"}]},
-                         "Y" => {f, "f", [{var, "W"}]},
-                         "Z" => {f, "f", [{var, "X"}]}}},
-                  unify([{f, "f", [{var, "X"}]}, {f, "f", [{var, "W"}]}, {f, "f", [{const, "a"}]}, {var, "Z"}],
-                        [{var, "Z"},             {var, "Y"},             {var, "W"},               {var, "Y"}],
-                        #{}))
+     ?assertEqual({ok, #{"W" => {func, "f", [{const, "a"}]},
+                         "X" => {func, "f", [{const, "a"}]},
+                         "Y" => {func, "f", [{var, "W"}]},
+                         "Z" => {func, "f", [{var, "X"}]}}},
+                  unify([{func, "f", [{var, "X"}]}, {func, "f", [{var, "W"}]}, {func, "f", [{const, "a"}]}, {var, "Z"}],
+                        [{var, "Z"},                {var, "Y"},                {var, "W"},                  {var, "Y"}],
+                        #{})),
+     % same formula as previous test with variable lookup
+     ?assertEqual({{func, "some_func", [{func, "f", [{func, "f", [{const, "a"}]}]}]},
+                   {func, "f", [{func, "f", [{const, "a"}]}]}},
+                  ?LET({ok, Unifier},
+                       unify([{func, "f", [{var, "X"}]}, {func, "f", [{var, "W"}]}, {func, "f", [{const, "a"}]}, {var, "Z"}],
+                             [{var, "Z"},                {var, "Y"},                {var, "W"},                  {var, "Y"}],
+                             #{}),
+                       {lookup({func, "some_func", [{var, "Z"}]}, Unifier),
+                        lookup({var, "Y"}, Unifier)}))
     ].
 
 long_test() ->
-     % T1 = p(Z, h(Z, W), f(W)), T2 = p(f(X), h(Y, f(a)), Y), T1 = T2.
-     % this literal of internal representation is admittedly a bit much, but a good test
-    T1 = {f, "p", [{var, "Z"},             {f, "h", [{var, "Y"}, {f, "f", [{const, "a"}]}]}, {var, "Y"}]},
-    T2 = {f, "p", [{f, "f", [{var, "X"}]}, {f, "h", [{var, "Z"}, {var, "W"}]},               {f, "f", [{var, "W"}]}]},
+    % T1 = p(Z, h(Z, W), f(W)), T2 = p(f(X), h(Y, f(a)), Y), T1 = T2.
+    % this literal of internal representation is admittedly a bit much, but a good test
+    T1 = {func, "p", [{var, "Z"},                {func, "h", [{var, "Y"}, {func, "f", [{const, "a"}]}]}, {var, "Y"}]},
+    T2 = {func, "p", [{func, "f", [{var, "X"}]}, {func, "h", [{var, "Z"}, {var, "W"}]},                  {func, "f", [{var, "W"}]}]},
     ?assertEqual({ok,#{"T1" => T1,
                        "T2" => T2,
-                       "W" => {f,"f",[{const,"a"}]},
-                       "X" => {f,"f",[{const,"a"}]},
-                       "Y" => {f,"f",[{var,"X"}]},
-                       "Z" => {f,"f",[{var,"X"}]}}},
+                       "W" => {func, "f", [{const, "a"}]},
+                       "X" => {func, "f", [{const, "a"}]},
+                       "Y" => {func, "f", [{var, "X"}]},
+                       "Z" => {func, "f", [{var, "X"}]}}},
                  unify([T1,          T2,          {var, "T2"}],
                        [{var, "T1"}, {var, "T2"}, {var, "T1"}],
                        #{})).
