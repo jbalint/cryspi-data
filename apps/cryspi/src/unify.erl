@@ -1,5 +1,7 @@
 %% -------------------------------------------------------------------
 %%
+%%   unify: Unification of terms.
+%%
 %%   Copyright 2015 Jess Balint
 %%
 %%   Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,16 +18,51 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc Unification of terms.
-
 -module(unify).
--compile([export_all]).
+-export([merge/2, lookup/2, unify/3]).
+
+-include("syntax.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif. % TEST.
 
-% Replace any variables in the given term according to the unifier
+% @doc "Merge" two unifiers. Essentially a merge of the mappings
+% verifying that any shared keys map to the same value. If any shared
+% keys map to two different values, then an "error" is returned.
+-spec merge(U1::unifier(), U2::unifier()) -> {ok, unifier()} | error.
+
+merge(U1, U2) ->
+    case merge_impl(U1, U2, maps:keys(U1)) of
+        error ->
+            error;
+        UMerge ->
+            {ok, UMerge}
+    end.
+
+merge_impl(_, U2, []) ->
+    U2;
+merge_impl(U1, U2, [K|Tail]) ->
+    case maps:find(K, U1) of
+        {ok, U1Val} ->
+            case maps:find(K, U2) of
+                {ok, U2Val} -> % in both, verify equality
+                    if U1Val == U2Val ->
+                            merge_impl(U1, U2, Tail);
+                       true ->
+                            error
+                    end;
+                _ -> % Not in U2, add it
+                    merge_impl(U1, maps:put(K, U1Val, U2), Tail)
+            end;
+        _ -> % not in U2, already in U2, move on
+            merge_impl(U1, U2, Tail)
+    end.
+
+% @doc Replace any variables in the given term according to the
+% unifier
+-spec lookup(Term::term_node(), Unifier::unifier()) -> term_node().
+
 lookup({var, V}, Unifier) ->
     case maps:find(V, Unifier) of
         error ->
@@ -39,6 +76,9 @@ lookup({func, Name, Args}, Unifier) ->
 lookup(Term, _) ->
     Term.
 
+% @doc Unify two sequences of terms in "terms of" the first sequence.
+-spec unify(Terms1::[term_node()], Terms2::[term_node()], Unifier::unifier()) -> {ok, unifier()} | error.
+
 unify([], [], Unifier) -> {ok, Unifier};
 
 unify(Terms1, Terms2, _) when length(Terms1) /= length(Terms2) -> error;
@@ -51,9 +91,9 @@ unify([{var, V1}|Tail1], [{var, V2}|Tail2], Unifier) ->
         % both variables are bound
         {{ok, Term1}, {ok, Term2}} ->
             unify([Term1|Tail1], [Term2|Tail2], Unifier);
-        % neither are bound, bind (value=)V1 to (key=)V2
+        % neither are bound, bind V1 => V2
         {error, error} ->
-            unify(Tail1, Tail2, maps:put(V2, {var, V1}, Unifier));
+            unify(Tail1, Tail2, maps:put(V1, {var, V2}, Unifier));
         % one of the two is already bound. Bind the unbound to the value of the bound
         {{ok, Term1}, error} ->
             unify(Tail1, Tail2, maps:put(V2, Term1, Unifier));
@@ -103,7 +143,7 @@ simple_test() ->
                   unify([{const, "asd"}, {const, "asd"}, {var, "X"}],
                         [{var, "Y"},     {var, "X"},     {var, "Y"}],
                         #{})),
-     ?assertEqual({ok, #{"X" => {const, "asd"}, "Y" => {var, "X"}}},
+     ?assertEqual({ok, #{"Y" => {const, "asd"}, "X" => {var, "Y"}}},
                   ?LET(Unifier, unify([{var, "X"}, {const, "asd"}],
                                       [{var, "Y"},     {var, "X"}],
                                       #{}),
@@ -167,5 +207,20 @@ long_test() ->
                  unify([T1,          T2,          {var, "T2"}],
                        [{var, "T1"}, {var, "T2"}, {var, "T1"}],
                        #{})).
+
+merge_test() ->
+    % subsumes
+    Test1U1 = #{"X" => "X"},
+    Test1U2 = #{"X" => "X", "Y" => "Y"},
+    ?assertEqual({ok, Test1U2}, merge(Test1U1, Test1U2)),
+    % overlapping
+    Test2U1 = #{"X" => "X", "Y" => "Y"},
+    Test2U2 = #{"Y" => "Y", "Z" => "Z"},
+    ?assertEqual({ok, #{"X" => "X", "Y" => "Y", "Z" => "Z"}},
+                 merge(Test2U1, Test2U2)),
+    % not-matching
+    Test3U1 = #{"X" => "X1"},
+    Test3U2 = #{"X" => "X2"},
+    ?assertEqual(error, merge(Test3U1, Test3U2)).
 
 -endif. % TEST.
