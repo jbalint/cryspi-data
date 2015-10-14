@@ -20,8 +20,9 @@
 
 -module(unify).
 -export([merge/2, lookup/2, unify/3]).
+-export_type([unifier/0]).
 
--include("syntax.hrl").
+-type unifier() :: #{string() => cryspi_syntax:cterm()}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -61,7 +62,7 @@ merge_impl(U1, U2, [K|Tail]) ->
 
 % @doc Replace any variables in the given term according to the
 % unifier
--spec lookup(Term::term_node(), Unifier::unifier()) -> term_node().
+-spec lookup(Term::cryspi_syntax:cterm(), Unifier::unifier()) -> cryspi_syntax:cterm().
 
 lookup({var, V}, Unifier) ->
     case maps:find(V, Unifier) of
@@ -76,7 +77,7 @@ lookup(Term, _) ->
     Term.
 
 % @doc Unify two sequences of terms in "terms of" the first sequence.
--spec unify(Terms1::[term_node()], Terms2::[term_node()], Unifier::unifier()) -> {ok, unifier()} | error.
+-spec unify(Terms1::[cryspi_syntax:cterm()], Terms2::[cryspi_syntax:cterm()], Unifier::unifier()) -> {ok, unifier()} | error.
 
 unify([], [], Unifier) -> {ok, Unifier};
 
