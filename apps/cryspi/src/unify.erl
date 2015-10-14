@@ -68,7 +68,6 @@ lookup({var, V}, Unifier) ->
         error ->
             {var, V};
         {ok, Term} ->
-            io:format("Looking up ~p as ~p\n", [V, Term]),
             lookup(Term, Unifier)
     end;
 lookup({func, Name, Args}, Unifier) ->
@@ -91,9 +90,9 @@ unify([{var, V1}|Tail1], [{var, V2}|Tail2], Unifier) ->
         % both variables are bound
         {{ok, Term1}, {ok, Term2}} ->
             unify([Term1|Tail1], [Term2|Tail2], Unifier);
-        % neither are bound, bind V1 => V2
+        % neither are bound, bind V2 => V1
         {error, error} ->
-            unify(Tail1, Tail2, maps:put(V1, {var, V2}, Unifier));
+            unify(Tail1, Tail2, maps:put(V2, {var, V1}, Unifier));
         % one of the two is already bound. Bind the unbound to the value of the bound
         {{ok, Term1}, error} ->
             unify(Tail1, Tail2, maps:put(V2, Term1, Unifier));
@@ -111,7 +110,12 @@ unify([{var, V}|Tail1], [GroundTerm|Tail2], Unifier) ->
     end;
 % Inverse
 unify([GroundTerm|Tail1], [{var, V}|Tail2], Unifier) ->
-    unify([{var, V}|Tail2], [GroundTerm|Tail1], Unifier);
+    case maps:find(V, Unifier) of
+        {ok, VTerm} ->
+            unify([GroundTerm|Tail1], [VTerm|Tail2], Unifier);
+        error ->
+            unify(Tail1, Tail2, maps:put(V, GroundTerm, Unifier))
+    end;
 
 unify([Ground1|Tail1], [Ground2|Tail2], Unifier) when Ground1 == Ground2 ->
     unify(Tail1, Tail2, Unifier);
@@ -143,7 +147,7 @@ simple_test() ->
                   unify([{const, "asd"}, {const, "asd"}, {var, "X"}],
                         [{var, "Y"},     {var, "X"},     {var, "Y"}],
                         #{})),
-     ?assertEqual({ok, #{"Y" => {const, "asd"}, "X" => {var, "Y"}}},
+     ?assertEqual({ok, #{"X" => {const, "asd"}, "Y" => {var, "X"}}},
                   ?LET(Unifier, unify([{var, "X"}, {const, "asd"}],
                                       [{var, "Y"},     {var, "X"}],
                                       #{}),
