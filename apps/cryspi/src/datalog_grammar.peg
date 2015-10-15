@@ -1,31 +1,65 @@
 % Note: NO WHITESPACE is allowed
+% Reference: https://github.com/seancribbs/neotoma/wiki
 
-sentence <- rule / goal / assertion ` Node ` ;
+%%%%%%%sentence <- rule / goal / assertion ` Node ` ;
 
-rule <- func_term ":-" disj "." ` datalog_parse:rule(Node) ` ;
+entry_point <-
+			defclause /
+			goal /
+			term % for testing only
+			;
 
-goal <- "?-" disj "." ` datalog_parse:goal(Node) ` ;
+% returns: cryspi_syntax:defclause()
+defclause <- head:atom ":-" body:(literal ("," literal)*) "."
+		  ` {defclause,
+		  	 proplists:get_value(head, Node),
+			 datalog_parse:arg_list(proplists:get_value(body, Node))} ` ;
 
-assertion <- term "." ` datalog_parse:assert(Node) ` ;
+% returns: cryspi_syntax:goal()
+goal <- "?-" body:(literal ("," literal)*) "."
+	 ` {goal, datalog_parse:arg_list(proplists:get_value(body, Node))} ` ;
 
-disj <- conj (";" conj)* ` datalog_parse:disj(Node) ` ;
+% returns: cryspi_syntax:literal()
+literal <- atom ;
 
-conj <- unit_clause ("," unit_clause)* ` datalog_parse:conj(Node) ` ;
+% returns: cryspi_syntax:catom()
+atom <- name:symbol_name "(" args:arg_list ")"
+	 ` {pred, proplists:get_value(name, Node), proplists:get_value(args, Node)} ` ;
 
-unit_clause <- "(" disj ")" / term ` datalog_parse:unit_clause(Node) ` ;
+% returns: cryspi_syntax:clist()
+list <- "[" args:arg_list "]"
+	 ` {list, proplists:get_value(args, Node)} ` ;
 
-% Terms
+% returns: cryspi_syntax:ht()
+ht <- "[" head:arg_list "|" tail:var "]"
+   ` {ht, proplists:get_value(head, Node), proplists:get_value(tail, Node)} ` ;
 
-term <- func_term / constant / int / variable ;
+% returns: cryspi_syntax:cterm()
+term <- fterm / fconst / int / var / list / ht ;
 
-func_term <- symbol_name "(" arg_list ")" ` datalog_parse:func(Node) ` ;
+% returns: cryspi_syntax:fterm()
+fterm <- name:symbol_name "(" args:arg_list ")"
+	  ` {func, proplists:get_value(name, Node), proplists:get_value(args, Node)} ` ;
 
-arg_list <- (term ("," term)*)? ` datalog_parse:arg_list(Node) ` ;
+% returns: [cryspi_syntax:cterm()]
+arg_list <- (term ("," term)*)?
+		 ` datalog_parse:arg_list(Node) ` ;
 
-constant <- symbol_name ` {const, Node} ` ;
+% returns: cryspi_syntax:const()
+fconst <- symbol_name
+	   ` {const, {func, Node}} ` ;
 
-symbol_name <- [a-z] [a-z0-9_]* ` lists:concat([binary_to_list(Char) || Char <- datalog_parse:l(Node)]) ` ;
+% returns: string()
+symbol_name <- [a-z] [A-Za-z0-9_]*
+			` lists:concat([binary_to_list(Char) || Char <- datalog_parse:l(Node)]) ` ;
 
-variable <- [A-Z] [a-z0-9_]* ` datalog_parse:var(lists:concat([binary_to_list(Char) || Char <- datalog_parse:l(Node)])) ` ;
+% returns: cryspi_syntax:var()
+var <- [A-Z] [A-Za-z0-9_]*
+	` {var, lists:concat([binary_to_list(Char) || Char <- datalog_parse:l(Node)])} ` ;
 
-int <- [0-9]+ ` Int = binary_to_integer(iolist_to_binary(Node)), datalog_parse:literal(Int) ` ;
+% returns: cryspi_syntax:const()
+int <- [0-9]+
+	` Int = binary_to_integer(iolist_to_binary(Node)), {const, {int, Int}} ` ;
+
+% TODO: float
+% TODO: strings (with escapes)
