@@ -30,30 +30,23 @@
 -record(goal_state,
         {iter_depth=0 :: non_neg_integer()}).
 
-solve_goal(Goal) ->
-    solve_goal(Goal, #goal_state{}).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif. % TEST.
 
-%% @doc Solve a goal.
--spec solve_goal(Goal::cryspi_syntax:goal(), GoalState::#goal_state{}) -> answer_set().
-solve_goal(OrigGoal, GoalState=#goal_state{iter_depth=IterDepth}) ->
-    {goal, Body} = OrigGoal, %%cryspi_syntax:add_depth(OrigGoal, IterDepth),
-    % search each of the subgoals independently
-    % AnswerSets::[answer_set()]
-    AnswerSets = lists:map(fun (SG) ->
-                                   solve_subgoal(SG, GoalState#goal_state{iter_depth=IterDepth+1})
-                           end, Body),
-    % merge all the answer sets
-    merge_answer_sets(AnswerSets).
-
-test_merge() ->
-    cryspi_search:merge_answer_sets([[#{"X"=>{const, {int, 1}},
-                                        "Y"=>{const, {int, 1}}},
-                                      #{"X"=>{const, {int, 2}},
-                                        "Y"=>{const, {int, 2}}}],
-                                     [#{"X"=>{const,{int,2}},
-                                        "Z"=>{const, {int, 3}}}],
-                                     [#{"Z"=>{const, {int, 4}},
-                                        "Z1"=>{const,{int,4}}}]]).
+% copied from OTP 18 maps.erl
+-spec maps_filter(Pred,Map1) -> Map2 when
+      Pred :: fun((Key, Value) ->
+                         boolean()),
+      Key  :: term(),
+      Value :: term(),
+      Map1 :: map(),
+            Map2 :: map().
+maps_filter(Pred,Map) when is_function(Pred,2), is_map(Map) ->
+    maps:from_list([{K,V}||{K,V}<-maps:to_list(Map),
+                           Pred(K,V)]);
+maps_filter(Pred,Map) ->
+    erlang:error(map_error,[Pred,Map]).
 
 -spec merge_answer_sets(AnswersSets::[answer_set()]) -> answer_set().
 merge_answer_sets([]) ->
@@ -77,40 +70,36 @@ merge_answer_sets([AS1,AS2|Tail]) ->
             merge_answer_sets([Merged|Tail])
     end.
 
--spec maps_filter(Pred,Map1) -> Map2 when
-      Pred :: fun((Key, Value) ->
-                         boolean()),
-      Key  :: term(),
-      Value :: term(),
-      Map1 :: map(),
-            Map2 :: map().
+solve_goal(Goal) ->
+    solve_goal(Goal, #goal_state{}).
 
-maps_filter(Pred,Map) when is_function(Pred,2), is_map(Map) ->
-    maps:from_list([{K,V}||{K,V}<-maps:to_list(Map),
-                           Pred(K,V)]);
-maps_filter(Pred,Map) ->
-    erlang:error(map_error,[Pred,Map]).
-
+%% @doc Solve a goal.
+-spec solve_goal(Goal::cryspi_syntax:goal(), GoalState::#goal_state{}) -> answer_set().
+solve_goal(OrigGoal, GoalState=#goal_state{iter_depth=IterDepth}) ->
+    {goal, Body} = OrigGoal, %%cryspi_syntax:add_depth(OrigGoal, IterDepth),
+    % search each of the subgoals independently
+    % AnswerSets::[answer_set()]
+    AnswerSets = lists:map(fun (SG) ->
+                                   solve_subgoal(SG, GoalState#goal_state{iter_depth=IterDepth+1})
+                           end, Body),
+    % merge all the answer sets
+    merge_answer_sets(AnswerSets).
 
 % TODO this function should be routed to the appropriate node
 -spec solve_subgoal(Literal::cryspi_syntax:literal(), GoalState::#goal_state{}) -> answer_set().
 solve_subgoal(Literal, GoalState=#goal_state{iter_depth=Depth}) ->
     % look up all possible answer sources
-    {AnswerSources, FactSets} = lookup_predicate(Literal, Depth),
+    {AnswerSources, FactSet} = lookup_predicate(Literal, Depth),
     % filter answers sources whose head unifies with the subgoal
     % AnswerSources::[answer_source()]
-    RuleAnswerSets = lists:map(fun (G) ->
-                                       solve_goal({goal, G}, GoalState)
-                               end, AnswerSources),
-    % TODO why flatten here
-    AnswerSets = FactSets ++ lists:flatten(RuleAnswerSets),
-    AnswerSets2 = [maps_filter(fun ({_, VarDepth}, _) -> VarDepth < Depth end, AS)
-                   || AS <- AnswerSets],
-    AnswerSets2.
+    % RuleAnswerSet::answer_set()
+    AnswerSet = lists:foldl(fun (G, Acc) ->
+                                    [solve_goal({goal, G}, GoalState)|Acc]
+                            end, [FactSet], AnswerSources),
+    % filter out any irrelevant bits of the unifiers (variables not known at upper layers)
+    [maps_filter(fun ({_, VarDepth}, _) -> VarDepth < Depth end, AS) || AS <- lists:flatten(AnswerSet)].
 
-% TEST: cryspi_search:lookup_predicate({pred, "p", [{var, {"X", 0}}, {var, {"Y", 0}}]}, 1).
-
--spec lookup_predicate(Pred::cryspi_syntax:catom(), Depth::non_neg_integer()) -> {[answer_source()], answer_set()}.
+-spec lookup_predicate(Pred::cryspi_syntax:catom(), Depth::non_neg_integer()) -> {answer_source(), answer_set()}.
 lookup_predicate({pred, Pred, Args}, Depth) ->
     % TODO using static test data for now
     {OrigRules, OrigFacts} = test_data(Pred),
@@ -225,3 +214,6 @@ test_data(Pred) ->
         _ ->
             {[], []} % empty facts and rules
     end.
+
+-ifdef(TEST).
+-endif. % TEST.
