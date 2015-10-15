@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(unify).
+-module(cryspi_unify).
 -export([merge/2, lookup/2, unify/3]).
 -export_type([unifier/0]).
 
@@ -75,6 +75,8 @@ lookup({func, Name, Args}, Unifier) ->
     {func, Name, lists:map(fun (Arg) -> lookup(Arg, Unifier) end, Args)};
 lookup({list, Elements}, Unifier) ->
     {list, lists:map(fun (Arg) -> lookup(Arg, Unifier) end, Elements)};
+lookup({pred, Pred, Args}, Unifier) ->
+    {pred, Pred, lists:map(fun (Arg) -> lookup(Arg, Unifier) end, Args)};
 lookup(Term, _) ->
     Term.
 

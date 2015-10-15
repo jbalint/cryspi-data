@@ -19,10 +19,12 @@
 %% -------------------------------------------------------------------
 
 -module(cryspi_syntax).
--export([is_var/1, is_ground/1]).
--export_type([var/0, const/0, fterm/0, clist/0, ht/0, cterm/0, catom/0, literal/0, defclause/0, goal/0]).
+-export([is_var/1, is_ground/1, add_depth/2]).
 
--type var() :: {var, VarName::string()}.
+-export_type([var/0, const/0, fterm/0, clist/0, ht/0, cterm/0,
+              catom/0, literal/0, defclause/0, goal/0, unit/0, formula/0]).
+
+-type var() :: {var, VarName::string()} | {var, {VarName::string(), Depth::non_neg_integer()}}.
 -type const() :: {const, {int, Value::integer()}} |
                  {const, {float, Value::float()}} |
                  {const, {string, Value::string()}} |
@@ -40,6 +42,10 @@
 
 -type goal() :: {goal, Body::[literal()]}.
 
+-type unit() :: catom().
+
+-type formula() :: defclause() | literal() | cterm().
+
 -spec is_var(Term::cterm()) -> boolean().
 is_var({var, _}) ->
     true;
@@ -50,3 +56,28 @@ is_var(_) ->
 is_ground({var, _}) ->
     false.
 % TODO rest of patterns
+
+-spec add_depth(Formula::(formula() | [formula()]), Depth::non_neg_integer()) -> formula().
+add_depth({defclause, {pred, Pred, Args}, Body}, Depth) ->
+    {defclause, {pred, Pred, lists:map(fun (X) -> add_depth(X, Depth) end, Args)},
+     lists:map(fun (X) -> add_depth(X, Depth) end, Body)};
+add_depth({goal, Body}, Depth) ->
+    {goal, lists:map(fun (X) -> add_depth(X, Depth) end, Body)};
+add_depth({pred, Pred, Args}, Depth) ->
+    {pred, Pred, lists:map(fun (X) -> add_depth(X, Depth) end, Args)};
+add_depth({list, Elements}, Depth) ->
+    {list, lists:map(fun (X) -> add_depth(X, Depth) end, Elements)};
+add_depth({ht, Head, Tail}, Depth) ->
+    {ht, lists:map(fun (X) -> add_depth(X, Depth) end, Head), add_depth(Tail, Depth)};
+add_depth({fterm, Func, Args}, Depth) ->
+    {fterm, Func, lists:map(fun (X) -> add_depth(X, Depth) end, Args)};
+add_depth({var, Name}, Depth) when is_list(Name) ->
+    {var, {Name, Depth}};
+add_depth(V={var, _}, _) ->
+    % force a pattern match failure
+    {var, already_has_version} = V,
+    V;
+% else a constant
+add_depth(Formula, _) ->
+    Formula.
+
