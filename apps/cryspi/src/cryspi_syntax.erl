@@ -21,8 +21,10 @@
 -module(cryspi_syntax).
 -export([is_var/1, is_ground/1, add_depth/2]).
 
+-include("cryspi_syntax.hrl").
+
 -export_type([var/0, const/0, fterm/0, clist/0, ht/0, cterm/0,
-              catom/0, literal/0, defclause/0, goal/0, unit/0, formula/0]).
+              catom/0, literal/0, defclause/0, unit/0, formula/0]).
 
 -type var() :: {var, VarName::string()} | {var, {VarName::string(), Depth::non_neg_integer()}}.
 -type const() :: {const, {int, Value::integer()}} |
@@ -39,8 +41,6 @@
 -type literal() :: catom(). % TODO: support negation in parser, etc: | {not_, Negated::catom()}.
 
 -type defclause() :: {defclause, Consequent::catom(), Antecedents::[literal()]}.
-
--type goal() :: {goal, Body::[literal()]}.
 
 -type unit() :: catom().
 
@@ -61,8 +61,8 @@ is_ground({var, _}) ->
 add_depth({defclause, {pred, Pred, Args}, Body}, Depth) ->
     {defclause, {pred, Pred, lists:map(fun (X) -> add_depth(X, Depth) end, Args)},
      lists:map(fun (X) -> add_depth(X, Depth) end, Body)};
-add_depth({goal, Body}, Depth) ->
-    {goal, lists:map(fun (X) -> add_depth(X, Depth) end, Body)};
+add_depth(G=#goal{body=Body}, Depth) ->
+    G#goal{body=lists:map(fun (X) -> add_depth(X, Depth) end, Body)};
 add_depth({pred, Pred, Args}, Depth) ->
     {pred, Pred, lists:map(fun (X) -> add_depth(X, Depth) end, Args)};
 add_depth({list, Elements}, Depth) ->
@@ -80,4 +80,3 @@ add_depth(V={var, _}, _) ->
 % else a constant
 add_depth(Formula, _) ->
     Formula.
-

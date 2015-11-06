@@ -23,6 +23,8 @@
 -module(datalog_parse).
 -export([parse/1, l/1, arg_list/1, to_string/1]).
 
+-include("cryspi_syntax.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif. % TEST.
@@ -68,7 +70,7 @@ to_string(Formula) ->
             io_lib:format("~s(~s)", [Name, list_to_string(Args)]);
         {defclause, Head, Body} ->
             io_lib:format("~s:-~s.", [to_string(Head), list_to_string(Body)]);
-        {goal, Body} ->
+        #goal{body=Body} ->
             io_lib:format("?-~s.", [list_to_string(Body)])
     end.
 
@@ -103,8 +105,8 @@ basic_defclause_test() ->
                  datalog_parse:parse("a(1):-b(2),c(3).")).
 
 basic_goal_test() ->
-    ?assertEqual({goal,[{pred, "a", [{var, "B"}]},
-                        {pred, "b", [{var, "C"}, {const, {int, 1}}]}]},
+    ?assertEqual(#goal{body=[{pred, "a", [{var, "B"}]},
+                             {pred, "b", [{var, "C"}, {const, {int, 1}}]}]},
                  datalog_parse:parse("?-a(B),b(C,1).")).
 
 -endif. % TEST.

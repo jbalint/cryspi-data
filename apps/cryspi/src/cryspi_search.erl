@@ -23,6 +23,8 @@
 -compile([export_all]).
 -export_type([]).
 
+-include("cryspi_syntax.hrl").
+
 -type answer_set() :: [cryspi_unify:unifier()].
 
 -type answer_source() :: [cryspi_syntax:goal()].
@@ -75,8 +77,7 @@ solve_goal(Goal) ->
 
 %% @doc Solve a goal.
 -spec solve_goal(Goal::cryspi_syntax:goal(), GoalState::#goal_state{}) -> answer_set().
-solve_goal(OrigGoal, GoalState=#goal_state{iter_depth=IterDepth}) ->
-    {goal, Body} = OrigGoal, %%cryspi_syntax:add_depth(OrigGoal, IterDepth),
+solve_goal(#goal{body=Body}, GoalState=#goal_state{iter_depth=IterDepth}) ->
     % search each of the subgoals independently
     % AnswerSets::[answer_set()]
     AnswerSets = lists:map(fun (SG) ->
@@ -94,7 +95,7 @@ solve_subgoal(Literal, GoalState=#goal_state{iter_depth=Depth}) ->
     % AnswerSources::[answer_source()]
     % RuleAnswerSet::answer_set()
     AnswerSet = lists:foldl(fun (G, Acc) ->
-                                    [solve_goal({goal, G}, GoalState)|Acc]
+                                    [solve_goal(#goal{body=G}, GoalState)|Acc]
                             end, [FactSet], AnswerSources),
     % filter out any irrelevant bits of the unifiers (variables not known at upper layers)
     [maps_filter(fun ({_, VarDepth}, _) -> VarDepth < Depth end, AS) || AS <- lists:flatten(AnswerSet)].
