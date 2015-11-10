@@ -27,7 +27,7 @@
 
 -type answer_set() :: [cryspi_unify:unifier()].
 
--type answer_source() :: [cryspi_syntax:goal()].
+-type answer_source() :: [#goal{}].
 
 -record(goal_state,
         {iter_depth=0 :: non_neg_integer()}).
@@ -76,7 +76,7 @@ solve_goal(Goal) ->
     solve_goal(Goal, #goal_state{}).
 
 %% @doc Solve a goal.
--spec solve_goal(Goal::cryspi_syntax:goal(), GoalState::#goal_state{}) -> answer_set().
+-spec solve_goal(Goal::#goal{}, GoalState::#goal_state{}) -> answer_set().
 solve_goal(#goal{body=Body}, GoalState=#goal_state{iter_depth=IterDepth}) ->
     % search each of the subgoals independently
     % AnswerSets::[answer_set()]

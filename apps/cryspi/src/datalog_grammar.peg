@@ -15,7 +15,7 @@ defclause <- head:atom ":-" body:(literal ("," literal)*) "."
 		  	 proplists:get_value(head, Node),
 			 datalog_parse:arg_list(proplists:get_value(body, Node))} ` ;
 
-% returns: cryspi_syntax:goal()
+% returns: #goal{}
 goal <- "?-" body:(literal ("," literal)*) "."
 	 ` #goal{body=datalog_parse:arg_list(proplists:get_value(body, Node))} ` ;
 
