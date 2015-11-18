@@ -1,6 +1,9 @@
 % Note: NO WHITESPACE is allowed
 % Reference: https://github.com/seancribbs/neotoma/wiki
 
+% Need to include in the generated code:
+%-include("cryspi_syntax.hrl").
+
 %%%%%%%sentence <- rule / goal / assertion ` Node ` ;
 
 entry_point <-

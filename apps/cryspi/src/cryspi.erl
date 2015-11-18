@@ -20,3 +20,8 @@
 
 -module(cryspi).
 -compile([export_all]).
+
+basic_access_pattern() ->
+    Goal = datalog_parse:parse("?-grandparent(zeus,GRANDCHILD)."),
+    Goal2 = cryspi_syntax:add_depth(Goal, 0),
+    cryspi_search:solve_goal(Goal2).

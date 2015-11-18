@@ -1,0 +1,9 @@
+{application,
+ cryspi,
+ [{description, "CrySpi - Distributed Datalog"},
+  {vsn, "0.0.0"},
+  {applications, [kernel, stdlib, crypto, riak_core]},
+  {mod, {cryspi_app, []}},
+  {registered, []},
+  {env, []}
+ ]}.

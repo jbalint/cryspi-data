@@ -27,6 +27,8 @@
 init(_Partitions) ->
     {ok, {}}.
 
+handle_command({solve_goal, Goal, GoalState}, _Sender, ModState) ->
+    {reply, cryspi_search:solve_goal(Goal, GoalState), ModState};
 handle_command(_Request, _Sender, ModState) ->
     Result = nothing,
     {reply, Result, ModState}.
